@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 notify = { version = "6.0.1", features = ["serde"] }
+serde = { version="1.0.176", features = ['derive']}
+toml = "0.7.6"

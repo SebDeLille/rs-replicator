@@ -7,7 +7,8 @@ pub enum ChangeType {NEW, CHANGE, DELETE, STOP}
 pub struct FileChange {
     pub kind: ChangeType,
     pub path: String,
-    pub destination: String
+    pub destination: String,
+    pub exceptions: Vec<String>
 }
 
 impl Display for ChangeType {
@@ -21,12 +22,31 @@ impl Display for ChangeType {
     }
 }
 
-pub fn manage_change(change: &FileChange) {
-    println!("kind: {}, file:{}",change.kind, change.path);
-    if change.kind == ChangeType::CHANGE {
-        if change.path.ends_with(".py") {
-            let p = change.destination.clone() + "/test.txt";
-            fs::copy(&change.path, &p);
+impl Display for FileChange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f,"{} - {} - {} - {}", self.kind, self.path, self.destination, self.destination)
+    }
+}
+fn is_valid(change: &FileChange) -> bool {
+    for ext in change.exceptions.clone() {
+        if change.path.ends_with(ext.as_str()) {
+            return false
         }
+    }
+    true
+}
+
+pub fn manage_change(change: &FileChange) {
+    println!("{}", change);
+    match change.kind {
+        ChangeType::CHANGE => {
+            if is_valid(change) {
+                let p = change.destination.clone() + "/test.txt";
+                if let Err(e) = fs::copy(&change.path, &p) {
+                    println!("{}", e);
+                }
+            }
+        },
+        _ => ()
     }
 }

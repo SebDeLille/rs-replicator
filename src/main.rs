@@ -4,7 +4,7 @@ mod error;
 use std::collections::HashMap;
 use std::path::{Path};
 use std::env;
-use notify::{RecursiveMode, Watcher, RecommendedWatcher, Config, ReadDirectoryChangesWatcher};
+use notify::{RecursiveMode, Watcher, RecommendedWatcher, Config, ReadDirectoryChangesWatcher, Event};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use notify::EventKind::{Create, Modify, Remove};
@@ -78,6 +78,16 @@ fn init_watcher(watcher: &mut ReadDirectoryChangesWatcher, config: &ReplicatorCo
     Ok(())
 }
 
+fn send_file_change(event: Event, tx_event: &Sender<FileChange>, config: &ReplicatorConfig, t: ChangeType) {
+    event.paths.iter().for_each(|path| {
+        if let Some(str_path) = path.to_str() {
+            if let Err(e) = tx_event.send(create_filechange(str_path, config, t.clone())) {
+                println!("{}", e);
+            }
+        }
+    });
+}
+
 fn path_reader(config: &ReplicatorConfig) -> Result<(), ReplicatorError> {
     let (tx, rx) = channel();
     let mut watcher = match RecommendedWatcher::new(tx, Config::default()) {
@@ -93,33 +103,9 @@ fn path_reader(config: &ReplicatorConfig) -> Result<(), ReplicatorError> {
         match res {
             Ok(event) => {
                 match event.kind {
-                    Create(_) => {
-                        event.paths.iter().for_each(|path| {
-                            if let Some(str_path) = path.to_str() {
-                                if let Err(e) = tx_event.send(create_filechange(str_path, config, ChangeType::NEW)) {
-                                    println!("{}", e);
-                                }
-                            }
-                        })
-                    }
-                    Modify(_) => {
-                        event.paths.iter().for_each(|path| {
-                            if let Some(str_path) = path.to_str() {
-                                if let Err(e) = tx_event.send(create_filechange(str_path, config, ChangeType::CHANGE)) {
-                                    println!("{}", e);
-                                }
-                            }
-                        })
-                    }
-                    Remove(_) => {
-                        event.paths.iter().for_each(|path| {
-                            if let Some(str_path) = path.to_str() {
-                                if let Err(e) = tx_event.send(create_filechange(str_path, config, ChangeType::DELETE)) {
-                                    println!("{}", e);
-                                }
-                            }
-                        })
-                    }
+                    Create(_) => send_file_change(event, &tx_event, config, ChangeType::NEW),
+                    Modify(_) => send_file_change(event, &tx_event, config, ChangeType::CHANGE),
+                    Remove(_) => send_file_change(event, &tx_event, config, ChangeType::DELETE),
                     _ => (),
                 }
             }

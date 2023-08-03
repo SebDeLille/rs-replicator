@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::fs;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum ChangeType {NEW, CHANGE, DELETE, STOP}
 
 pub struct FileChange {
@@ -24,7 +24,7 @@ impl Display for ChangeType {
 
 impl Display for FileChange {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f,"{} - {} - {} - {}", self.kind, self.path, self.destination, self.destination)
+        write!(f,"{} - {} - {} - {:?}", self.kind, self.path, self.destination, self.exceptions)
     }
 }
 fn is_valid(change: &FileChange) -> bool {

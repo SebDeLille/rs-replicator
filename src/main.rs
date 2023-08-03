@@ -39,34 +39,36 @@ fn init_thread() -> Sender<FileChange> {
     tx_event
 }
 
-fn select_destination(path: &str, config: &ReplicatorConfig) -> Result<String, ()> {
+fn select_destination(path: &str, config: &ReplicatorConfig) -> Result<(String, String), ReplicatorError> {
     for conf in config.paths.keys() {
         if path.starts_with(conf) {
-            return Ok(config.paths.get(conf).unwrap().path.clone());
+            return Ok((conf.clone(), config.paths.get(conf).unwrap().path.clone()));
         }
     }
-    Err(())
+    Err(ReplicatorError::new("Inconnu".to_string()))
 }
 
-fn select_exceptions(path: &str, config: &ReplicatorConfig) -> Result<Vec<String>, ()> {
+fn select_exceptions(path: &str, config: &ReplicatorConfig) -> Result<Vec<String>, ReplicatorError> {
     for conf in config.paths.keys() {
         if path.starts_with(conf) {
             return Ok(config.paths.get(conf).unwrap().exception.clone());
         }
     }
-    Err(())
+    Err(ReplicatorError::new("Inconnu".to_string()))
 }
 
-fn create_filechange(path: &str, config: &ReplicatorConfig, kind: ChangeType) -> FileChange {
-    let d = select_destination(path, config).unwrap();
-    let e = select_exceptions(path, config).unwrap();
+fn create_filechange(path: &str, config: &ReplicatorConfig, kind: ChangeType) -> Result<FileChange, ReplicatorError> {
+    let d = select_destination(path, config)?;
+    let e = select_exceptions(path, config)?;
+    let p = String::from(path).strip_prefix(&d.0).unwrap().to_string();
 
-    FileChange {
+    Ok(FileChange {
         kind,
-        path: String::from(path),
-        destination: d,
+        path: p,
+        source: d.0,
+        destination: d.1,
         exceptions: e,
-    }
+    })
 }
 
 fn init_watcher(watcher: &mut ReadDirectoryChangesWatcher, config: &ReplicatorConfig) -> Result<(), ReplicatorError> {
@@ -81,8 +83,13 @@ fn init_watcher(watcher: &mut ReadDirectoryChangesWatcher, config: &ReplicatorCo
 fn send_file_change(event: Event, tx_event: &Sender<FileChange>, config: &ReplicatorConfig, t: ChangeType) {
     event.paths.iter().for_each(|path| {
         if let Some(str_path) = path.to_str() {
-            if let Err(e) = tx_event.send(create_filechange(str_path, config, t.clone())) {
-                println!("{}", e);
+            match create_filechange(str_path, config, t.clone()) {
+                Ok(change) => {
+                    if let Err(e) = tx_event.send(change) {
+                        println!("{}", e);
+                    }
+                }
+                Err(e) => println!("{}", e.msg())
             }
         }
     });
@@ -97,7 +104,7 @@ fn path_reader(config: &ReplicatorConfig) -> Result<(), ReplicatorError> {
 
     let tx_event = init_thread();
 
-    init_watcher(&mut watcher,config)?;
+    init_watcher(&mut watcher, config)?;
 
     for res in rx {
         match res {

@@ -2,13 +2,14 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 
 #[derive(PartialEq, Clone)]
-pub enum ChangeType {NEW, CHANGE, DELETE, STOP}
+pub enum ChangeType { NEW, CHANGE, DELETE, STOP }
 
 pub struct FileChange {
     pub kind: ChangeType,
     pub path: String,
+    pub source: String,
     pub destination: String,
-    pub exceptions: Vec<String>
+    pub exceptions: Vec<String>,
 }
 
 impl Display for ChangeType {
@@ -24,29 +25,37 @@ impl Display for ChangeType {
 
 impl Display for FileChange {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f,"{} - {} - {} - {:?}", self.kind, self.path, self.destination, self.exceptions)
+        write!(f, "{} - {} - {} - {} - {:?}", self.kind, self.path, self.source, self.destination, self.exceptions)
     }
 }
+
 fn is_valid(change: &FileChange) -> bool {
     for ext in change.exceptions.clone() {
         if change.path.ends_with(ext.as_str()) {
-            return false
+            return false;
         }
     }
     true
 }
 
+fn copy_file(change: &FileChange) {
+    if is_valid(change) {
+        let d = change.destination.clone() + change.path.clone().as_str();
+        let s = change.source.clone() + change.path.clone().as_str();
+        if let Err(e) = fs::copy(&s, &d) {
+            println!("{}", e);
+        }
+    }
+}
+
+fn delete_file() {}
+
 pub fn manage_change(change: &FileChange) {
     println!("{}", change);
     match change.kind {
-        ChangeType::CHANGE => {
-            if is_valid(change) {
-                let p = change.destination.clone() + "/test.txt";
-                if let Err(e) = fs::copy(&change.path, &p) {
-                    println!("{}", e);
-                }
-            }
-        },
+        ChangeType::CHANGE => copy_file(change),
+        ChangeType::NEW => copy_file(change),
+        ChangeType::DELETE => delete_file(),
         _ => ()
     }
 }

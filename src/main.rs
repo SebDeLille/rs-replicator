@@ -1,14 +1,16 @@
 mod copy;
+mod error;
 
 use std::collections::HashMap;
 use std::path::{Path};
 use std::env;
-use notify::{RecursiveMode, Watcher, RecommendedWatcher, Config};
+use notify::{RecursiveMode, Watcher, RecommendedWatcher, Config, ReadDirectoryChangesWatcher};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use notify::EventKind::{Create, Modify, Remove};
 use serde::Deserialize;
 use crate::copy::{ChangeType, FileChange, manage_change};
+use crate::error::ReplicatorError;
 
 
 #[derive(Deserialize, Debug, Clone)]
@@ -25,7 +27,7 @@ struct ReplicatorConfig {
 fn init_thread() -> Sender<FileChange> {
     let (tx_event, rx_event): (Sender<FileChange>, Receiver<FileChange>) = channel();
 
-    let t = thread::spawn(move || {
+    let _t = thread::spawn(move || {
         loop {
             let msg = rx_event.recv().unwrap();
             if msg.kind == ChangeType::STOP {
@@ -55,44 +57,69 @@ fn select_exceptions(path: &str, config: &ReplicatorConfig) -> Result<Vec<String
     Err(())
 }
 
-fn create_filechange(path: &str, config: &ReplicatorConfig) -> FileChange {
+fn create_filechange(path: &str, config: &ReplicatorConfig, kind: ChangeType) -> FileChange {
     let d = select_destination(path, config).unwrap();
     let e = select_exceptions(path, config).unwrap();
 
     FileChange {
-        kind: ChangeType::CHANGE,
+        kind,
         path: String::from(path),
         destination: d,
         exceptions: e,
     }
 }
 
-fn path_reader(config: &ReplicatorConfig) -> notify::Result<()> {
+fn init_watcher(watcher: &mut ReadDirectoryChangesWatcher, config: &ReplicatorConfig) -> Result<(), ReplicatorError> {
+    for key in config.paths.keys() {
+        if let Err(e) = watcher.watch(Path::new(key), RecursiveMode::Recursive) {
+            return Err(ReplicatorError::new(e.to_string()));
+        }
+    }
+    Ok(())
+}
+
+fn path_reader(config: &ReplicatorConfig) -> Result<(), ReplicatorError> {
     let (tx, rx) = channel();
-    let mut watcher = RecommendedWatcher::new(tx, Config::default())?;
+    let mut watcher = match RecommendedWatcher::new(tx, Config::default()) {
+        Ok(w) => w,
+        Err(e) => return Err(ReplicatorError::new(e.to_string())),
+    };
+
     let tx_event = init_thread();
 
-    for key in config.paths.keys() {
-        println!("{}", key);
-        watcher.watch(Path::new(key), RecursiveMode::Recursive)?;
-    }
-
+    init_watcher(&mut watcher,config)?;
 
     for res in rx {
         match res {
             Ok(event) => {
                 match event.kind {
-                    Create(f) => println!("create {:?}", f),
-                    Modify(_) => {
-                        for path in event.paths {
-                            if let Some(pp) = path.to_str() {
-                                if let Err(e) = tx_event.send(create_filechange(pp, config)) {
+                    Create(_) => {
+                        event.paths.iter().for_each(|path| {
+                            if let Some(str_path) = path.to_str() {
+                                if let Err(e) = tx_event.send(create_filechange(str_path, config, ChangeType::NEW)) {
                                     println!("{}", e);
                                 }
                             }
-                        }
+                        })
                     }
-                    Remove(f) => println!("remove {:?}", f),
+                    Modify(_) => {
+                        event.paths.iter().for_each(|path| {
+                            if let Some(str_path) = path.to_str() {
+                                if let Err(e) = tx_event.send(create_filechange(str_path, config, ChangeType::CHANGE)) {
+                                    println!("{}", e);
+                                }
+                            }
+                        })
+                    }
+                    Remove(_) => {
+                        event.paths.iter().for_each(|path| {
+                            if let Some(str_path) = path.to_str() {
+                                if let Err(e) = tx_event.send(create_filechange(str_path, config, ChangeType::DELETE)) {
+                                    println!("{}", e);
+                                }
+                            }
+                        })
+                    }
                     _ => (),
                 }
             }
@@ -118,7 +145,7 @@ fn read_config(filepath: &String) -> Result<ReplicatorConfig, &'static str> {
     }
 }
 
-fn main() -> notify::Result<()> {
+fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         println!("Bad number of arguments.");
@@ -134,5 +161,7 @@ fn main() -> notify::Result<()> {
         }
     }
 
-    path_reader(&config)
+    if let Err(e) = path_reader(&config) {
+        println!("{}", e.msg());
+    }
 }

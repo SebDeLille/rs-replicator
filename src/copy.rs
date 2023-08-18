@@ -39,9 +39,12 @@ fn is_valid(change: &FileChange) -> bool {
 }
 
 fn copy_file(change: &FileChange) {
+    println!("copy");
     if is_valid(change) {
         let d = change.destination.clone() + change.path.clone().as_str();
         let s = change.source.clone() + change.path.clone().as_str();
+        println!("{}", d.clone());
+        println!("{}", s.clone());
         if let Err(e) = fs::copy(&s, &d) {
             println!("{}", e);
         }
@@ -57,5 +60,22 @@ pub fn manage_change(change: &FileChange) {
         ChangeType::NEW => copy_file(change),
         ChangeType::DELETE => delete_file(),
         _ => ()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::copy::{ChangeType, FileChange, manage_change};
+
+    #[test]
+    fn test_copy() {
+        let change = FileChange {
+            kind: ChangeType::NEW,
+            source: String::from("src"),
+            destination: String::from("dest"),
+            path: String::from("/tocopy.txt"),
+            exceptions: vec![".xml".to_string()],
+        };
+        manage_change(&change);
     }
 }

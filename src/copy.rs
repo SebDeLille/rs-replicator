@@ -65,17 +65,57 @@ pub fn manage_change(change: &FileChange) {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use crate::copy::{ChangeType, FileChange, manage_change};
 
+    fn create_dest_diretory(dir: &str) -> std::io::Result<()> {
+        fs::create_dir(dir)
+    }
+
+    fn delete_dest_directory(dir: &str) {
+        let r = fs::remove_dir_all(dir);
+        if r.is_err() {
+            println!("{} does not exist", dir);
+        }
+    }
     #[test]
-    fn test_copy() {
+    fn test_copy_new() {
+        let dest = "./tests/resources/dest";
+        delete_dest_directory(dest);
+        if create_dest_diretory(dest).is_err() {
+            panic!("Unable to create {} directory", dest);
+        }
+
         let change = FileChange {
             kind: ChangeType::NEW,
-            source: String::from("src"),
-            destination: String::from("dest"),
+            source: String::from("./tests/resources/src"),
+            destination: String::from(dest),
             path: String::from("/tocopy.txt"),
             exceptions: vec![".xml".to_string()],
         };
         manage_change(&change);
+
+        assert!(std::path::Path::new("./tests/resources/dest/tocopy.txt").exists());
+    }
+
+    #[test]
+    fn test_copy_change() {
+        let dest = "./tests/resources/destc";
+        delete_dest_directory(dest);
+        if create_dest_diretory(dest).is_err() {
+            panic!("Unable to create {} directory", dest);
+        }
+
+        let change = FileChange {
+            kind: ChangeType::CHANGE,
+            source: String::from("./tests/resources/src"),
+            destination: String::from(dest),
+            path: String::from("/tocopy.txt"),
+            exceptions: vec![".xml".to_string()],
+        };
+        manage_change(&change);
+
+        assert!(std::path::Path::new("./tests/resources/destc/tocopy.txt").exists());
+
     }
 }

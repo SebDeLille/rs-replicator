@@ -4,7 +4,7 @@ mod error;
 use std::collections::HashMap;
 use std::path::{Path};
 use std::env;
-use notify::{RecursiveMode, Watcher, RecommendedWatcher, Config, ReadDirectoryChangesWatcher, Event};
+use notify::{RecursiveMode, Watcher, RecommendedWatcher, Config, Event};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use notify::EventKind::{Create, Modify, Remove};
@@ -27,7 +27,7 @@ struct ReplicatorConfig {
 fn init_thread() -> Sender<FileChange> {
     let (tx_event, rx_event): (Sender<FileChange>, Receiver<FileChange>) = channel();
 
-    let _t = thread::spawn(move || {
+    let _ = thread::spawn(move || {
         loop {
             let msg = rx_event.recv().unwrap();
             if msg.kind == ChangeType::STOP {
@@ -71,7 +71,7 @@ fn create_filechange(path: &str, config: &ReplicatorConfig, kind: ChangeType) ->
     })
 }
 
-fn init_watcher(watcher: &mut ReadDirectoryChangesWatcher, config: &ReplicatorConfig) -> Result<(), ReplicatorError> {
+fn init_watcher(watcher: &mut dyn Watcher, config: &ReplicatorConfig) -> Result<(), ReplicatorError> {
     for key in config.paths.keys() {
         if let Err(e) = watcher.watch(Path::new(key), RecursiveMode::Recursive) {
             return Err(ReplicatorError::new(e.to_string()));
